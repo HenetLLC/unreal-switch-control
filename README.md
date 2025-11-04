@@ -15,10 +15,10 @@ This plugin is designed for **Unreal Engine 5.6**.
 
 ## Installation
 
-1.  Download the latest release from the [releases page](https://github.com/your-repo/HenetSwitchControl/releases).
+1.  Download the latest `HenetSwitchControl-vX.X.X.zip` file from the [GitHub Releases page](https://github.com/HenetLLC/unreal-switch-control/releases).
 2.  In your Unreal Engine project, create a `Plugins` folder at the root if it doesn't already exist.
-3.  Extract the downloaded archive and copy the `HenetSwitchControl` folder into your project's `Plugins` folder.
-4.  Restart the Unreal Editor. The plugin should be automatically detected.
+3.  Extract the downloaded zip archive into your project's `Plugins` folder. The structure should be `YourProject/Plugins/HenetSwitchControl/`.
+4.  Restart the Unreal Editor.
 5.  Open the Plugins window (`Edit > Plugins`) and verify that "Henet Switch Control" is enabled under the "Project" or "Installed" category.
 
 ## How to Use

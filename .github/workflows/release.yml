@@ -1,0 +1,54 @@
+name: Release Plugin
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v1.1
+
+      - name: Setup Unreal Engine
+        id: setup-unreal
+        uses: unreal-engine-sp/setup-unreal@v1.0
+        with:
+          engine-version: "5.4" # This can be adjusted to your target UE version
+
+      - name: Build Plugin
+        run: |
+          & "${{ steps.setup-unreal.outputs.engine-path }}/Engine/Build/BatchFiles/RunUAT.bat" BuildPlugin -Plugin:"${{ github.workspace }}/HenetSwitchControl.uplugin" -Package:"${{ github.workspace }}/Package" -CreateSubFolder
+
+      - name: Zip the package
+        run: |
+          Compress-Archive -Path "${{ github.workspace }}/Package/HenetSwitchControl" -DestinationPath "${{ github.workspace }}/HenetSwitchControl-${{ github.ref_name }}.zip"
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./HenetSwitchControl-${{ github.ref_name }}.zip
+          asset_name: HenetSwitchControl-${{ github.ref_name }}.zip
+          asset_content_type: application/zip
