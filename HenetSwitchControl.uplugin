@@ -1,0 +1,24 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.7",
+	"FriendlyName": "Henet Switch Control",
+	"Description": "Monitors a serial port for switch presses based on the Henet switch protocol.",
+	"Category": "Henet LLC",
+	"CreatedBy": "Henet LLC",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "HenetSwitchControl",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}
