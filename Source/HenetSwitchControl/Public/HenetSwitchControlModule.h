@@ -6,6 +6,9 @@
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
 
+// Declare the module's log category
+DECLARE_LOG_CATEGORY_EXTERN(LogHenetSwitchControl, Log, All);
+
 class FHenetSwitchControlModule : public IModuleInterface
 {
 public:
@@ -13,4 +16,3 @@ public:
     virtual void StartupModule() override;
     virtual void ShutdownModule() override;
 };
-

@@ -5,6 +5,9 @@ DerivedDataCache/
 Intermediate/
 Saved/
 Script/
+Config/
+.vscode/
+
 
 # Visual Studio
 .vs/

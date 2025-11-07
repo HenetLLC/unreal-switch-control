@@ -2,6 +2,7 @@
 // Build.cs file for HenetSwitchControl plugin
 
 using UnrealBuildTool;
+using System.IO; // <-- Added required import for Path.Combine
 
 public class HenetSwitchControl : ModuleRules
 {
@@ -44,10 +45,11 @@ public class HenetSwitchControl : ModuleRules
             }
             );
         
-        // Add necessary definitions and libraries for Windows serial communication
+        // This plugin is Windows-only.
+        // Add definitions, includes, and libraries only for Windows.
         if (Target.Platform == UnrealTargetPlatform.Win64)
         {
-            PrivateIncludePaths.Add(System.IO.Path.Combine(ModuleDirectory, "Private/Windows"));
+            PrivateIncludePaths.Add(Path.Combine(ModuleDirectory, "Private/Windows")); // <-- Used Path.Combine
 
             // Add definitions to conditionally compile Windows-specific code
             PublicDefinitions.Add("HENET_WINDOWS_SERIAL=1");
@@ -55,6 +57,12 @@ public class HenetSwitchControl : ModuleRules
             // Add necessary system libraries
             PublicSystemLibraries.Add("kernel32.lib");
             PublicSystemLibraries.Add("setupapi.lib");
+        }
+        // Explicitly define HENET_WINDOWS_SERIAL as 0 for all other platforms
+        // to ensure the #else block is used correctly.
+        else
+        {
+            PublicDefinitions.Add("HENET_WINDOWS_SERIAL=0");
         }
         
         DynamicallyLoadedModuleNames.AddRange(
@@ -65,4 +73,3 @@ public class HenetSwitchControl : ModuleRules
             );
     }
 }
-

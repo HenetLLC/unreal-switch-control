@@ -39,3 +39,7 @@ The plugin consists of two main parts:
 -   A Blueprint node (`UHenetSwitchMonitorNode`) that spawns the worker thread and provides a simple interface for Blueprints to receive events from the hardware.
 
 This design ensures that all blocking I/O operations are kept off the main game thread, guaranteeing smooth performance.
+
+# Notes
+
+Paikallinen buildi: "C:\Program Files\Epic Games\UE_5.6\Engine\Build\BatchFiles\RunUAT.bat" BuildPlugin -Plugin="C:\VirtualWorlds\Oulu2026HenetPlugin\Plugins\HenetSwitchControl\HenetSwitchControl.uplugin" -Package="C:\VirtualWorlds\Oulu2026HenetPlugin\Plugins\HenetSwitchControl\Packaged" -TargetPlatforms=Win64 -CreateSubFolder

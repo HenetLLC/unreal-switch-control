@@ -3,9 +3,9 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
+#include "CoreMinimal.h" // <-- Reverted back to CoreMinimal.h
 #include "HAL/Runnable.h"
-#include "HAL/ThreadSafe.h"
+#include "Templates/Atomic.h" // <-- This is the correct header for TAtomic
 #include "Containers/Queue.h"
 
 // Define a struct to pass event data from the worker thread to the game thread
@@ -62,7 +62,7 @@ private:
     TQueue<FHenetSwitchEvent, EQueueMode::Mpsc>& EventQueue;
 
     /** Atomic an_d volatile boolean to stop the thread */
-    FThreadSafeCounter StopTaskCounter;
+    TAtomic<int32> StopTaskCounter; // <-- Replaced deprecated FThreadSafeCounter
 
     /** Handle to the serial port (Windows-specific) */
     void* hSerial; // Using void* to avoid including Windows.h in header
@@ -74,10 +74,10 @@ private:
         DLE = 0x10,
         STX = 0x02,
         ETX = 0x03,
-        'S' = 0x53,
-        'H' = 0x48,
-        'P' = 0x50,
-        'R' = 0x52
+        Proto_S = 0x53, // <-- Fixed: Changed 'S' to Proto_S
+        Proto_H = 0x48, // <-- Fixed: Changed 'H' to Proto_H
+        Proto_P = 0x50, // <-- Fixed: Changed 'P' to Proto_P
+        Proto_R = 0x52  // <-- Fixed: Changed 'R' to Proto_R
     };
 
     // Parser state machine
@@ -97,4 +97,3 @@ private:
     uint8 TempSwitchNum;
     uint8 TempEventType;
 };
-

@@ -4,9 +4,10 @@
 #include "HenetSwitchMonitorNode.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
+#include "HenetSwitchControlModule.h" // <-- Added include for log category
 
 // Link to the custom log category
-DECLARE_LOG_CATEGORY_EXTERN(LogHenetSwitchControl, Log, All);
+// DECLARE_LOG_CATEGORY_EXTERN(LogHenetSwitchControl, Log, All); // <-- Removed this line
 
 UHenetSwitchMonitorNode* UHenetSwitchMonitorNode::ListenForHenetSwitchEvents(UObject* InWorldContextObject, const FString& InPortName)
 {
@@ -68,7 +69,7 @@ void UHenetSwitchMonitorNode::SetReadyToDestroy()
         }
     }
     
-    Super::SetReadyToDestroy();
+    UBlueprintAsyncActionBase::SetReadyToDestroy(); // <-- Fixed: Changed Super:: to UBlueprintAsyncActionBase::
 }
 
 void UHenetSwitchMonitorNode::TimerCallback()
@@ -82,10 +83,15 @@ void UHenetSwitchMonitorNode::CheckForUpdates()
     if (!Worker) return;
 
     FHenetSwitchEvent Event;
+    bool bHeartbeat = false; // <-- Moved declaration outside the loop
+
     // Dequeue all events that have accumulated
     while (EventQueue.Dequeue(Event))
-    Example of EParserState::Find_SwitchNum:
-        bool bHeartbeat = false;
+    {
+        bHeartbeat = false; // <-- Reset to false at the start of each loop
+
+        // NOTE: The line "Example of EParserState::Find_SwitchNum:" was here and has been removed as it was a C++ syntax error.
+        // bool bHeartbeat = false; // <-- This line was moved up
 
         if (Event.bIsHeartbeat)
         {
@@ -112,4 +118,3 @@ void UHenetSwitchMonitorNode::CheckForUpdates()
         );
     }
 }
-

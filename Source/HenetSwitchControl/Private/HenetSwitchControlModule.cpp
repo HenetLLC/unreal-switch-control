@@ -3,8 +3,8 @@
 
 #include "HenetSwitchControlModule.h"
 
-// Define a custom log category for easy debugging
-DEFINE_LOG_CATEGORY_STATIC(LogHenetSwitchControl, Log, All);
+// Define the custom log category
+DEFINE_LOG_CATEGORY(LogHenetSwitchControl);
 
 void FHenetSwitchControlModule::StartupModule()
 {
@@ -20,4 +20,3 @@ void FHenetSwitchControlModule::ShutdownModule()
 }
 
 IMPLEMENT_MODULE(FHenetSwitchControlModule, HenetSwitchControl)
-

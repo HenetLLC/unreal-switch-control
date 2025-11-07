@@ -6,6 +6,7 @@
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintAsyncActionBase.h"
 #include "Containers/Queue.h"
+#include "TimerManager.h" // <-- Added this include for FTimerHandle
 #include "HenetSerialPortReader.h" // Includes FHenetSwitchEvent
 #include "HenetSwitchMonitorNode.generated.h"
 
@@ -66,4 +67,3 @@ private:
     // Current state of all switches
     bool bSwitchStates[4] = { false, false, false, false };
 };
-
