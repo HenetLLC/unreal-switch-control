@@ -6,10 +6,10 @@
 	"Description": "Monitors a serial port for switch presses based on the Henet switch protocol.",
 	"Category": "Henet LLC",
 	"CreatedBy": "Henet LLC",
-	"CreatedByURL": "",
-	"DocsURL": "",
-	"MarketplaceURL": "",
-	"SupportURL": "",
+	"CreatedByURL": "https://github.com/HenetLLC/unreal-switch-control",
+	"DocsURL": "https://github.com/HenetLLC/unreal-switch-control/blob/main/README.md",
+	"MarketplaceURL": "https://github.com/HenetLLC/unreal-switch-control/blob/main/LICENSE.md",
+	"SupportURL": "https://github.com/HenetLLC/unreal-switch-control/issues",
 	"CanContainContent": false,
 	"IsBetaVersion": false,
 	"IsExperimentalVersion": false,
@@ -18,7 +18,8 @@
 		{
 			"Name": "HenetSwitchControl",
 			"Type": "Runtime",
-			"LoadingPhase": "Default"
+			"LoadingPhase": "Default",
+			"bAllowArm64": false
 		}
 	],
 	"PlatformAllowList": [
