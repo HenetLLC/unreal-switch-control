@@ -5,7 +5,7 @@
 #include "HAL/PlatformProcess.h"
 #include "HAL/RunnableThread.h"
 #include "Logging/LogMacros.h"
-#include "HenetSwitchControlModule.h" // <-- Added include for log category
+#include "HenetSwitchControlModule.h"
 
 // Conditionally include Windows headers only on Windows
 #if PLATFORM_WINDOWS && HENET_WINDOWS_SERIAL
@@ -14,12 +14,9 @@
 // Define placeholder types if not on Windows to allow compilation
 typedef void* HANDLE;
 #define INVALID_HANDLE_VALUE ((HANDLE)(LONG_PTR)-1)
-typedef struct _DCB { uint32 DCBlength; } DCB; // <-- Fixed: Changed DWORD to uint32
-typedef struct _COMMTIMEOUTS { uint32 ReadIntervalTimeout; } COMMTIMEOUTS; // <-- Fixed: Changed DWORD to uint32
+typedef struct _DCB { uint32 DCBlength; } DCB;
+typedef struct _COMMTIMEOUTS { uint32 ReadIntervalTimeout; } COMMTIMEOUTS;
 #endif
-
-// Link to the custom log category from the module .cpp
-// DECLARE_LOG_CATEGORY_EXTERN(LogHenetSwitchControl, Log, All); // <-- Removed this line
 
 FHenetSerialPortReader::FHenetSerialPortReader(const FString& InPortName, TQueue<FHenetSwitchEvent, EQueueMode::Mpsc>& InEventQueue)
     : PortName(InPortName)
@@ -68,6 +65,7 @@ bool FHenetSerialPortReader::Init()
     {
         DWORD LastError = GetLastError();
         UE_LOG(LogHenetSwitchControl, Error, TEXT("Failed to open serial port %s. Error code: %d"), *PortName, LastError);
+        EventQueue.Enqueue(FHenetSwitchEvent::MakeConnectionStatus(false)); // <-- NEW
         return false;
     }
 
@@ -80,6 +78,7 @@ bool FHenetSerialPortReader::Init()
         UE_LOG(LogHenetSwitchControl, Error, TEXT("Failed to get serial port state."));
         CloseHandle(hSerial);
         hSerial = INVALID_HANDLE_VALUE;
+        EventQueue.Enqueue(FHenetSwitchEvent::MakeConnectionStatus(false)); // <-- NEW
         return false;
     }
 
@@ -93,6 +92,7 @@ bool FHenetSerialPortReader::Init()
         UE_LOG(LogHenetSwitchControl, Error, TEXT("Failed to set serial port state."));
         CloseHandle(hSerial);
         hSerial = INVALID_HANDLE_VALUE;
+        EventQueue.Enqueue(FHenetSwitchEvent::MakeConnectionStatus(false)); // <-- NEW
         return false;
     }
 
@@ -100,23 +100,36 @@ bool FHenetSerialPortReader::Init()
     // We'll use a short read timeout to make the ReadFile call non-blocking
     // and allow the thread loop to check for the Stop signal.
     COMMTIMEOUTS timeouts = {0};
-    timeouts.ReadIntervalTimeout = 50; // Max time between bytes
-    timeouts.ReadTotalTimeoutConstant = 50; // Total time for read
-    timeouts.ReadTotalTimeoutMultiplier = 10;
-    
+
+    // --- MODIFIED TIMEOUTS ---
+    // This changes ReadFile to a blocking call that waits up to 100ms for data.
+    // This is much more reliable than a non-blocking (0ms) read.
+    timeouts.ReadIntervalTimeout = MAXDWORD; 
+    timeouts.ReadTotalTimeoutConstant = 100; // Wait 100ms for *any* data
+    timeouts.ReadTotalTimeoutMultiplier = MAXDWORD;
+    // --- End of modification ---
+
     if (!SetCommTimeouts(hSerial, &timeouts))
     {
         UE_LOG(LogHenetSwitchControl, Error, TEXT("Failed to set serial port timeouts."));
         CloseHandle(hSerial);
         hSerial = INVALID_HANDLE_VALUE;
+        EventQueue.Enqueue(FHenetSwitchEvent::MakeConnectionStatus(false)); // <-- NEW
         return false;
+    }
+    else
+    {
+        // <-- NEW: Added log to confirm timeouts were set -->
+        UE_LOG(LogHenetSwitchControl, Log, TEXT("Successfully set serial port timeouts."));
     }
 
     UE_LOG(LogHenetSwitchControl, Log, TEXT("Successfully opened and configured serial port %s."), *PortName);
+    EventQueue.Enqueue(FHenetSwitchEvent::MakeConnectionStatus(true)); // <-- NEW
     return true;
 
 #else
     UE_LOG(LogHenetSwitchControl, Warning, TEXT("Serial communication is only supported on Windows."));
+    EventQueue.Enqueue(FHenetSwitchEvent::MakeConnectionStatus(false)); // <-- NEW
     return false;
 #endif
 }
@@ -136,31 +149,48 @@ uint32 FHenetSerialPortReader::Run()
     DWORD BytesRead = 0;
 
     // Main thread loop
-    while (StopTaskCounter.Load() == 0) // <-- Changed .GetValue() to .Load()
+    while (StopTaskCounter.Load() == 0)
     {
+        // <-- NEW: Added log to see if the loop is spinning -->
+        UE_LOG(LogHenetSwitchControl, VeryVerbose, TEXT("Run() loop spinning..."));
+
 #if PLATFORM_WINDOWS && HENET_WINDOWS_SERIAL
         // Try to read data from the port
+        // <-- NEW: Added log before ReadFile -->
+        UE_LOG(LogHenetSwitchControl, VeryVerbose, TEXT("Calling ReadFile..."));
         if (ReadFile(hSerial, ReadBuffer, sizeof(ReadBuffer), &BytesRead, NULL))
         {
             if (BytesRead > 0)
             {
+                // <-- NEW: Log the received bytes as a hex string -->
+                // Use VeryVerbose to avoid spamming the log unless needed for debugging.
+                FString HexString = FString::FromHexBlob(ReadBuffer, BytesRead);
+                UE_LOG(LogHenetSwitchControl, VeryVerbose, TEXT("Serial Data Received (%d bytes): %s"), BytesRead, *HexString);
+                // <-- End of new code -->
+
                 // Process every byte read
                 for (DWORD i = 0; i < BytesRead; ++i)
                 {
                     ParseByte(ReadBuffer[i]);
                 }
             }
+            else
+            {
+                // <-- NEW: Added log for ReadFile returning 0 bytes -->
+                UE_LOG(LogHenetSwitchControl, VeryVerbose, TEXT("ReadFile successful, but BytesRead = 0."));
+            }
         }
         else
         {
             // ReadFile failed, likely a disconnect
             UE_LOG(LogHenetSwitchControl, Error, TEXT("ReadFile failed. Error code: %d. Stopping thread."), GetLastError());
-            StopTaskCounter.Store(1); // <-- Fixed: Changed Increment() to Store(1)
+            EventQueue.Enqueue(FHenetSwitchEvent::MakeConnectionStatus(false)); // <-- NEW
+            StopTaskCounter.Store(1);
         }
 #else
         // Sleep if not on Windows, as this loop will just spin
         FPlatformProcess::Sleep(0.1f);
-        StopTaskCounter.Store(1); // <-- Fixed: Changed Increment() to Store(1)
+        StopTaskCounter.Store(1); // <-- FIXED: Removed garbled text from this line
 #endif
     }
 
@@ -171,7 +201,7 @@ uint32 FHenetSerialPortReader::Run()
 void FHenetSerialPortReader::Stop()
 {
     // This is called by the FRunnable interface, signals the thread to stop
-    StopTaskCounter.Store(1); // <-- Fixed: Changed Increment() to Store(1)
+    StopTaskCounter.Store(1);
 }
 
 void FHenetSerialPortReader::Exit()
@@ -198,6 +228,9 @@ void FHenetSerialPortReader::EnsureCompletion()
 
 void FHenetSerialPortReader::ParseByte(uint8 Byte)
 {
+    // <-- NEW: Log every byte processed -->
+    UE_LOG(LogHenetSwitchControl, VeryVerbose, TEXT("ParseByte: 0x%02X, State: %d"), Byte, static_cast<int32>(ParserState));
+
     // State machine to parse the protocol:
     // ENQ | DLE | STX | 'S'/'H' | [Switch#] | [Event] | DLE | ETX
     
@@ -219,11 +252,11 @@ void FHenetSerialPortReader::ParseByte(uint8 Byte)
         break;
 
     case EParserState::Find_Type:
-        if (Byte == EProtocolChars::Proto_H) // <-- Fixed: Changed 'H' to Proto_H
+        if (Byte == EProtocolChars::Proto_H)
         {
             ParserState = EParserState::Find_DLE2; // Heartbeat message
         }
-        else if (Byte == EProtocolChars::Proto_S) // <-- Fixed: Changed 'S' to Proto_S
+        else if (Byte == EProtocolChars::Proto_S)
         {
             ParserState = EParserState::Find_SwitchNum; // Switch event
         }
@@ -246,7 +279,7 @@ void FHenetSerialPortReader::ParseByte(uint8 Byte)
         break;
 
     case EParserState::Find_EventType:
-        if (Byte == EProtocolChars::Proto_P || Byte == EProtocolChars::Proto_R) // <-- Fixed: Changed 'P' and 'R'
+        if (Byte == EProtocolChars::Proto_P || Byte == EProtocolChars::Proto_R)
         {
             TempEventType = Byte;
             ParserState = EParserState::Find_DLE2;
@@ -273,7 +306,7 @@ void FHenetSerialPortReader::ParseByte(uint8 Byte)
             else
             {
                 int32 SwitchNum = TempSwitchNum - '0'; // Convert '1' -> 1
-                bool bPressed = (TempEventType == EProtocolChars::Proto_P); // <-- Fixed: Changed 'P' to Proto_P
+                bool bPressed = (TempEventType == EProtocolChars::Proto_P);
                 UE_LOG(LogHenetSwitchControl, Verbose, TEXT("Switch Message Parsed: Switch %d, %s"), 
                     SwitchNum, bPressed ? TEXT("Pressed") : TEXT("Released"));
                 EventQueue.Enqueue(FHenetSwitchEvent(SwitchNum, bPressed));
@@ -292,4 +325,4 @@ void FHenetSerialPortReader::ParseByte(uint8 Byte)
         ParserState = EParserState::Find_ENQ;
         break;
     }
-}
+}nt

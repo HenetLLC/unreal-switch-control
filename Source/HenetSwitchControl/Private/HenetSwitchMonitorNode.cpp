@@ -4,117 +4,152 @@
 #include "HenetSwitchMonitorNode.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
-#include "HenetSwitchControlModule.h" // <-- Added include for log category
-
-// Link to the custom log category
-// DECLARE_LOG_CATEGORY_EXTERN(LogHenetSwitchControl, Log, All); // <-- Removed this line
+#include "HenetSwitchControlModule.h"
 
 UHenetSwitchMonitorNode* UHenetSwitchMonitorNode::ListenForHenetSwitchEvents(UObject* InWorldContextObject, const FString& InPortName)
 {
-    UHenetSwitchMonitorNode* Node = NewObject<UHenetSwitchMonitorNode>();
-    Node->WorldContextObject = InWorldContextObject;
-    Node->PortName = InPortName;
-    return Node;
+	UHenetSwitchMonitorNode* Node = NewObject<UHenetSwitchMonitorNode>();
+	Node->WorldContextObject = InWorldContextObject;
+	Node->PortName = InPortName;
+	return Node;
 }
 
 void UHenetSwitchMonitorNode::Activate()
 {
-    if (!WorldContextObject)
-    {
-        UE_LOG(LogHenetSwitchControl, Error, TEXT("HenetSwitchMonitorNode: WorldContextObject is null."));
-        SetReadyToDestroy();
-        return;
-    }
+	if (!WorldContextObject)
+	{
+		UE_LOG(LogHenetSwitchControl, Error, TEXT("HenetSwitchMonitorNode: WorldContextObject is null."));
+		SetReadyToDestroy();
+		return;
+	}
 
-    UWorld* World = WorldContextObject->GetWorld();
-    if (!World)
-    {
-        UE_LOG(LogHenetSwitchControl, Error, TEXT("HenetSwitchMonitorNode: Failed to get World."));
-        SetReadyToDestroy();
-        return;
-    }
+	UWorld* World = WorldContextObject->GetWorld();
+	if (!World)
+	{
+		UE_LOG(LogHenetSwitchControl, Error, TEXT("HenetSwitchMonitorNode: Failed to get World."));
+		SetReadyToDestroy();
+		return;
+	}
 
-    // Start the worker thread
-    Worker = new FHenetSerialPortReader(PortName, EventQueue);
-    if (!Worker)
-    {
-        UE_LOG(LogHenetSwitchControl, Error, TEXT("HenetSwitchMonitorNode: Failed to create serial worker thread."));
-        SetReadyToDestroy();
-        return;
-    }
+	// Set the initial connection state to false.
+	// We will fire OnConnected if the worker's Init() succeeds.
+	bIsConnected = false;
 
-    // Start a timer on the game thread to poll the queue
-    World->GetTimerManager().SetTimer(TimerHandle, this, &UHenetSwitchMonitorNode::TimerCallback, 0.01f, true);
+	// Start the worker thread
+	Worker = new FHenetSerialPortReader(PortName, EventQueue);
+	if (!Worker)
+	{
+		UE_LOG(LogHenetSwitchControl, Error, TEXT("HenetSwitchMonitorNode: Failed to create serial worker thread."));
+		SetReadyToDestroy();
+		return;
+	}
 
-    UE_LOG(LogHenetSwitchControl, Log, TEXT("HenetSwitchMonitorNode activated. Listening on port %s."), *PortName);
+	// Start a timer on the game thread to poll the queue
+	World->GetTimerManager().SetTimer(TimerHandle, this, &UHenetSwitchMonitorNode::TimerCallback, 0.01f, true);
+
+	UE_LOG(LogHenetSwitchControl, Log, TEXT("HenetSwitchMonitorNode activated. Listening on port %s."), *PortName);
 }
 
 void UHenetSwitchMonitorNode::SetReadyToDestroy()
 {
-    // Clean up the worker thread
-    if (Worker)
-    {
-        Worker->EnsureCompletion();
-        delete Worker;
-        Worker = nullptr;
-    }
+	// Clean up the worker thread
+	if (Worker)
+	{
+		Worker->EnsureCompletion();
+		delete Worker;
+		Worker = nullptr;
+	}
 
-    // Clear the timer
-    if (WorldContextObject)
-    {
-        UWorld* World = WorldContextObject->GetWorld();
-        if (World)
-        {
-            World->GetTimerManager().ClearTimer(TimerHandle);
-        }
-    }
-    
-    UBlueprintAsyncActionBase::SetReadyToDestroy(); // <-- Fixed: Changed Super:: to UBlueprintAsyncActionBase::
+	// Clear the timer
+	if (WorldContextObject)
+	{
+		UWorld* World = WorldContextObject->GetWorld();
+		if (World)
+		{
+			World->GetTimerManager().ClearTimer(TimerHandle);
+		}
+	}
+	
+	UBlueprintAsyncActionBase::SetReadyToDestroy();
+}
+
+void UHenetSwitchMonitorNode::StopListening()
+{
+	UE_LOG(LogHenetSwitchControl, Log, TEXT("StopListening called on HenetSwitchMonitorNode. Cleaning up..."));
+	SetReadyToDestroy();
 }
 
 void UHenetSwitchMonitorNode::TimerCallback()
 {
-    // This function runs on the Game Thread
-    CheckForUpdates();
+	// This function runs on the Game Thread
+	CheckForUpdates();
 }
 
 void UHenetSwitchMonitorNode::CheckForUpdates()
 {
-    if (!Worker) return;
+	if (!Worker) return;
 
-    FHenetSwitchEvent Event;
-    bool bHeartbeat = false; // <-- Moved declaration outside the loop
+	FHenetSwitchEvent Event;
 
-    // Dequeue all events that have accumulated
-    while (EventQueue.Dequeue(Event))
-    {
-        bHeartbeat = false; // <-- Reset to false at the start of each loop
+	// Dequeue all events that have accumulated
+	while (EventQueue.Dequeue(Event))
+	{
+		// --- Fire the "OnUpdate" (catch-all) Pin ---
+		// This fires for *every* event, regardless of type.
+		OnUpdate.Broadcast();
 
-        // NOTE: The line "Example of EParserState::Find_SwitchNum:" was here and has been removed as it was a C++ syntax error.
-        // bool bHeartbeat = false; // <-- This line was moved up
+		// --- Fire Specific Event Pins ---
 
-        if (Event.bIsHeartbeat)
-        {
-            bHeartbeat = true;
-            UE_LOG(LogHenetSwitchControl, Log, TEXT("Heartbeat received by BP node."));
-        }
-        else if (Event.SwitchNumber >= 1 && Event.SwitchNumber <= 4)
-        {
-            // Update the state of the switch
-            bSwitchStates[Event.SwitchNumber - 1] = Event.bIsPressed;
-            UE_LOG(LogHenetSwitchControl, Log, TEXT("Switch %d state updated to: %s"), 
-                Event.SwitchNumber, bSwitchStates[Event.SwitchNumber - 1] ? TEXT("Pressed") : TEXT("Released"));
-        }
-
-        // Broadcast the update.
-        // The Heartbeat bool will be true for one frame, then false on the next
-        // update unless another heartbeat is received.
-        OnUpdate.Broadcast(
-            bSwitchStates[0],
-            bSwitchStates[1],
-            bSwitchStates[2],
-            bSwitchStates[3],
-            bHeartbeat
-        );
-    }
+		if (Event.bIsConnectionStatus)
+		{
+			// Check if the status has actually changed
+			if (Event.bIsConnected && !bIsConnected)
+			{
+				// We have just connected
+				bIsConnected = true;
+				OnConnected.Broadcast();
+				UE_LOG(LogHenetSwitchControl, Log, TEXT("Connection status: CONNECTED."));
+			}
+			else if (!Event.bIsConnected && bIsConnected)
+			{
+				// We have just disconnected
+				bIsConnected = false;
+				OnDisconnected.Broadcast();
+				UE_LOG(LogHenetSwitchControl, Log, TEXT("Connection status: DISCONNECTED."));
+			}
+		}
+		else if (Event.bIsHeartbeat)
+		{
+			// Fire the specific "OnHeartbeat" pin
+			OnHeartbeat.Broadcast();
+			UE_LOG(LogHenetSwitchControl, Verbose, TEXT("Heartbeat event fired."));
+		}
+		else if (Event.SwitchNumber >= 1 && Event.SwitchNumber <= 4)
+		{
+			// Fire the specific pin for the switch and its state (pressed/released)
+			switch (Event.SwitchNumber)
+			{
+			case 1:
+				if (Event.bIsPressed) OnSwitch1Pressed.Broadcast();
+				else OnSwitch1Released.Broadcast();
+				break;
+			case 2:
+				if (Event.bIsPressed) OnSwitch2Pressed.Broadcast();
+				else OnSwitch2Released.Broadcast();
+				break;
+			case 3:
+				if (Event.bIsPressed) OnSwitch3Pressed.Broadcast();
+				else OnSwitch3Released.Broadcast();
+				break;
+			case 4:
+				if (Event.bIsPressed) OnSwitch4Pressed.Broadcast();
+				else OnSwitch4Released.Broadcast();
+				break;
+			default:
+				// Should not happen
+				break;
+			}
+			UE_LOG(LogHenetSwitchControl, Verbose, TEXT("Switch %d event fired (Pressed: %s)"), Event.SwitchNumber, Event.bIsPressed ? TEXT("true") : TEXT("false"));
+		}
+	}
 }

@@ -43,3 +43,29 @@ This design ensures that all blocking I/O operations are kept off the main game 
 # Notes
 
 Paikallinen buildi: "C:\Program Files\Epic Games\UE_5.6\Engine\Build\BatchFiles\RunUAT.bat" BuildPlugin -Plugin="C:\VirtualWorlds\Oulu2026HenetPlugin\Plugins\HenetSwitchControl\HenetSwitchControl.uplugin" -Package="C:\VirtualWorlds\Oulu2026HenetPlugin\Plugins\HenetSwitchControl\Packaged" -TargetPlatforms=Win64 -CreateSubFolder
+
+Projektin sln ei onnistu ennen:
+
+        Open Your Project in the Unreal Editor (it will open fine now).
+
+        Add a New C++ Class:
+
+        In the editor, go to the top menu and click Tools -> New C++ Class....
+
+        A "Choose Parent Class" window will appear. Select Actor (it's a common, simple class).
+
+        Click Next.
+
+        Name the Class:
+
+        It will ask for a Name. You can just leave the default (MyActor) or call it EmptyCppClass.
+
+        Click Create Class.
+
+        Wait for Unreal to Work:
+
+        Unreal will now create the new class, automatically generate the Source folder for your project, and (usually) open Visual Studio for you.
+
+        You'll see a "Compiling..." or "Adding code..." popup. This is the magic step.
+
+        Close the Editor and Visual Studio.

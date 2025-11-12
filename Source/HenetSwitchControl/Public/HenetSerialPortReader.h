@@ -3,15 +3,17 @@
 
 #pragma once
 
-#include "CoreMinimal.h" // <-- Reverted back to CoreMinimal.h
+#include "CoreMinimal.h"
 #include "HAL/Runnable.h"
-#include "Templates/Atomic.h" // <-- This is the correct header for TAtomic
+#include "Templates/Atomic.h"
 #include "Containers/Queue.h"
 
 // Define a struct to pass event data from the worker thread to the game thread
 struct FHenetSwitchEvent
 {
     bool bIsHeartbeat = false;
+    bool bIsConnectionStatus = false; // <-- NEW
+    bool bIsConnected = false;        // <-- NEW (Payload for connection status)
     int32 SwitchNumber = 0; // 1-4
     bool bIsPressed = false;
 
@@ -22,6 +24,16 @@ struct FHenetSwitchEvent
 
     FHenetSwitchEvent(int32 InSwitch, bool bPressed)
         : SwitchNumber(InSwitch), bIsPressed(bPressed) {}
+
+    // <-- NEW: Static factory for creating a connection status event -->
+    static FHenetSwitchEvent MakeConnectionStatus(bool bConnected)
+    {
+        FHenetSwitchEvent Event;
+        Event.bIsConnectionStatus = true;
+        Event.bIsConnected = bConnected;
+        return Event;
+    }
+    // <-- End of new code -->
 };
 
 /**
@@ -62,7 +74,7 @@ private:
     TQueue<FHenetSwitchEvent, EQueueMode::Mpsc>& EventQueue;
 
     /** Atomic an_d volatile boolean to stop the thread */
-    TAtomic<int32> StopTaskCounter; // <-- Replaced deprecated FThreadSafeCounter
+    TAtomic<int32> StopTaskCounter;
 
     /** Handle to the serial port (Windows-specific) */
     void* hSerial; // Using void* to avoid including Windows.h in header
@@ -74,10 +86,10 @@ private:
         DLE = 0x10,
         STX = 0x02,
         ETX = 0x03,
-        Proto_S = 0x53, // <-- Fixed: Changed 'S' to Proto_S
-        Proto_H = 0x48, // <-- Fixed: Changed 'H' to Proto_H
-        Proto_P = 0x50, // <-- Fixed: Changed 'P' to Proto_P
-        Proto_R = 0x52  // <-- Fixed: Changed 'R' to Proto_R
+        Proto_S = 0x53,
+        Proto_H = 0x48,
+        Proto_P = 0x50,
+        Proto_R = 0x52
     };
 
     // Parser state machine
