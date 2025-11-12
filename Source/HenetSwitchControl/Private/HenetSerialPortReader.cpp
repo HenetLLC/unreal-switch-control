@@ -162,11 +162,10 @@ uint32 FHenetSerialPortReader::Run()
         {
             if (BytesRead > 0)
             {
-                // <-- NEW: Log the received bytes as a hex string -->
-                // Use VeryVerbose to avoid spamming the log unless needed for debugging.
+                // <-- Log level changed to Verbose -->
                 FString HexString = FString::FromHexBlob(ReadBuffer, BytesRead);
-                UE_LOG(LogHenetSwitchControl, VeryVerbose, TEXT("Serial Data Received (%d bytes): %s"), BytesRead, *HexString);
-                // <-- End of new code -->
+                UE_LOG(LogHenetSwitchControl, Verbose, TEXT("Serial Data Received (%d bytes): %s"), BytesRead, *HexString);
+                // <-- End of change -->
 
                 // Process every byte read
                 for (DWORD i = 0; i < BytesRead; ++i)
@@ -228,41 +227,70 @@ void FHenetSerialPortReader::EnsureCompletion()
 
 void FHenetSerialPortReader::ParseByte(uint8 Byte)
 {
-    // <-- NEW: Log every byte processed -->
-    UE_LOG(LogHenetSwitchControl, VeryVerbose, TEXT("ParseByte: 0x%02X, State: %d"), Byte, static_cast<int32>(ParserState));
+    // <-- Log level changed to Verbose -->
+    UE_LOG(LogHenetSwitchControl, Verbose, TEXT("ParseByte: 0x%02X, State: %d"), Byte, static_cast<int32>(ParserState));
 
-    // State machine to parse the protocol:
-    // ENQ | DLE | STX | 'S'/'H' | [Switch#] | [Event] | DLE | ETX
-    
+    // --- REFACTORED STATE MACHINE ---
+    // ENQ (0x05) is treated as a "reset" signal at any point.
+
+    // Check for ENQ first, as it can reset the state at any time.
+    if (Byte == EProtocolChars::ENQ)
+    {
+        UE_LOG(LogHenetSwitchControl, Verbose, TEXT("Sender is sending data (ENQ received)."));
+        ParserState = EParserState::Find_DLE1;
+        // Reset message data on ENQ
+        TempSwitchNum = 0;
+        TempEventType = 0;
+        return; // Byte processed, move to next
+    }
+
+    // Process byte based on current state
     switch (ParserState)
     {
     case EParserState::Find_ENQ:
-        if (Byte == EProtocolChars::ENQ)
-        {
-            ParserState = EParserState::Find_DLE1;
-        }
+        // We are just waiting for an ENQ, which is handled above.
+        // Any other byte is ignored.
         break;
 
     case EParserState::Find_DLE1:
-        ParserState = (Byte == EProtocolChars::DLE) ? EParserState::Find_STX : EParserState::Find_ENQ;
-        break;
-
-    case EParserState::Find_STX:
-        ParserState = (Byte == EProtocolChars::STX) ? EParserState::Find_Type : EParserState::Find_ENQ;
-        break;
-
-    case EParserState::Find_Type:
-        if (Byte == EProtocolChars::Proto_H)
+        if (Byte == EProtocolChars::DLE)
         {
-            ParserState = EParserState::Find_DLE2; // Heartbeat message
-        }
-        else if (Byte == EProtocolChars::Proto_S)
-        {
-            ParserState = EParserState::Find_SwitchNum; // Switch event
+            ParserState = EParserState::Find_STX;
         }
         else
         {
-            ParserState = EParserState::Find_ENQ; // Invalid type
+            UE_LOG(LogHenetSwitchControl, Warning, TEXT("Parse Error: No DLE was received as expected. Resetting."));
+            ParserState = EParserState::Find_ENQ;
+        }
+        break;
+
+    case EParserState::Find_STX:
+        if (Byte == EProtocolChars::STX)
+        {
+            UE_LOG(LogHenetSwitchControl, Verbose, TEXT("Transmission started (STX received)."));
+            ParserState = EParserState::Find_Type;
+        }
+        else
+        {
+            UE_LOG(LogHenetSwitchControl, Warning, TEXT("Parse Error: No STX was received as expected. Resetting."));
+            ParserState = EParserState::Find_ENQ;
+        }
+        break;
+
+    case EParserState::Find_Type:
+        if (Byte == EProtocolChars::Proto_H) // Heartbeat
+        {
+            TempSwitchNum = 0; // Ensure TempSwitchNum is 0 for heartbeat
+            ParserState = EParserState::Find_DLE2;
+        }
+        else if (Byte == EProtocolChars::Proto_S) // Switch Event
+        {
+            ParserState = EParserState::Find_SwitchNum;
+        }
+        else
+        {
+            UE_LOG(LogHenetSwitchControl, Warning, TEXT("Parse Error: Invalid message type (0x%02X). Resetting."), Byte);
+            ParserState = EParserState::Find_ENQ;
         }
         break;
 
@@ -274,7 +302,8 @@ void FHenetSerialPortReader::ParseByte(uint8 Byte)
         }
         else
         {
-            ParserState = EParserState::Find_ENQ; // Invalid switch number
+            UE_LOG(LogHenetSwitchControl, Warning, TEXT("Parse Error: Invalid switch number (0x%02X). Resetting."), Byte);
+            ParserState = EParserState::Find_ENQ;
         }
         break;
 
@@ -286,17 +315,28 @@ void FHenetSerialPortReader::ParseByte(uint8 Byte)
         }
         else
         {
-            ParserState = EParserState::Find_ENQ; // Invalid event type
+            UE_LOG(LogHenetSwitchControl, Warning, TEXT("Parse Error: Invalid event type (0x%02X). Resetting."), Byte);
+            ParserState = EParserState::Find_ENQ;
         }
         break;
 
     case EParserState::Find_DLE2:
-        ParserState = (Byte == EProtocolChars::DLE) ? EParserState::Find_ETX : EParserState::Find_ENQ;
+        if (Byte == EProtocolChars::DLE)
+        {
+            ParserState = EParserState::Find_ETX;
+        }
+        else
+        {
+            UE_LOG(LogHenetSwitchControl, Warning, TEXT("Parse Error: No DLE (2) was received as expected. Resetting."));
+            ParserState = EParserState::Find_ENQ;
+        }
         break;
 
     case EParserState::Find_ETX:
         if (Byte == EProtocolChars::ETX)
         {
+            UE_LOG(LogHenetSwitchControl, Verbose, TEXT("End of data was received (ETX)."));
+            
             // --- Valid Message Received ---
             if (TempSwitchNum == 0) // This means it was a heartbeat
             {
@@ -312,9 +352,12 @@ void FHenetSerialPortReader::ParseByte(uint8 Byte)
                 EventQueue.Enqueue(FHenetSwitchEvent(SwitchNum, bPressed));
             }
         }
-        // else: Invalid ETX
+        else
+        {
+            UE_LOG(LogHenetSwitchControl, Warning, TEXT("Parse Error: ETX was expected but not received (0x%02X). Resetting."), Byte);
+        }
         
-        // Reset for next message regardless of success
+        // Always reset after processing or error at this stage
         ParserState = EParserState::Find_ENQ;
         TempSwitchNum = 0;
         TempEventType = 0;
@@ -325,4 +368,4 @@ void FHenetSerialPortReader::ParseByte(uint8 Byte)
         ParserState = EParserState::Find_ENQ;
         break;
     }
-}nt
+}
