@@ -1,24 +1,38 @@
 // Copyright Henet LLC 2025
-// Implementation of the Blueprint Async Action
+// MODIFIED FILE
+// Implementation of the Event Listener (Node 2)
 
 #include "HenetSwitchMonitorNode.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 #include "HenetSwitchControlModule.h"
+#include "HenetSerialConnection.h" // <-- NEW: Include for the connection object
 
-UHenetSwitchMonitorNode* UHenetSwitchMonitorNode::ListenForHenetSwitchEvents(UObject* InWorldContextObject, const FString& InPortName)
+// <-- MODIFIED: Function signature changed -->
+UHenetSwitchMonitorNode* UHenetSwitchMonitorNode::ListenForHenetSwitchEvents(UObject* InWorldContextObject, UHenetSerialConnection* Connection)
 {
 	UHenetSwitchMonitorNode* Node = NewObject<UHenetSwitchMonitorNode>();
 	Node->WorldContextObject = InWorldContextObject;
-	Node->PortName = InPortName;
+	Node->TargetConnection = Connection; // <-- Store the connection
 	return Node;
 }
 
 void UHenetSwitchMonitorNode::Activate()
 {
+	// --- NEW: Added Log ---
+	UE_LOG(LogHenetSwitchControl, Log, TEXT("HenetSwitchMonitorNode: Activate() called."));
+
 	if (!WorldContextObject)
 	{
-		UE_LOG(LogHenetSwitchControl, Error, TEXT("HenetSwitchMonitorNode: WorldContextObject is null."));
+		UE_LOG(LogHenetSwitchControl, Error, TEXT("HenetSwitchMonitorNode: Activate() FAILED. WorldContextObject is null."));
+		SetReadyToDestroy();
+		return;
+	}
+
+	// <-- NEW: Check if the connection object is valid -->
+	if (!IsValid(TargetConnection))
+	{
+		UE_LOG(LogHenetSwitchControl, Error, TEXT("HenetSwitchMonitorNode: Activate() FAILED. Connection object is invalid."));
 		SetReadyToDestroy();
 		return;
 	}
@@ -26,39 +40,32 @@ void UHenetSwitchMonitorNode::Activate()
 	UWorld* World = WorldContextObject->GetWorld();
 	if (!World)
 	{
-		UE_LOG(LogHenetSwitchControl, Error, TEXT("HenetSwitchMonitorNode: Failed to get World."));
+		UE_LOG(LogHenetSwitchControl, Error, TEXT("HenetSwitchMonitorNode: Activate() FAILED. Failed to get World."));
 		SetReadyToDestroy();
 		return;
 	}
 
 	// Set the initial connection state to false.
-	// We will fire OnConnected if the worker's Init() succeeds.
+	// We will fire OnConnected if we get a connection event from the queue.
 	bIsConnected = false;
 
-	// Start the worker thread
-	Worker = new FHenetSerialPortReader(PortName, EventQueue);
-	if (!Worker)
-	{
-		UE_LOG(LogHenetSwitchControl, Error, TEXT("HenetSwitchMonitorNode: Failed to create serial worker thread."));
-		SetReadyToDestroy();
-		return;
-	}
+	// --- REMOVED ---
+	// Worker creation is now handled by Node 1
+	// ---
 
 	// Start a timer on the game thread to poll the queue
+	// --- NEW: Added Log ---
+	UE_LOG(LogHenetSwitchControl, Log, TEXT("HenetSwitchMonitorNode: Activate() success. Starting timer..."));
 	World->GetTimerManager().SetTimer(TimerHandle, this, &UHenetSwitchMonitorNode::TimerCallback, 0.01f, true);
 
-	UE_LOG(LogHenetSwitchControl, Log, TEXT("HenetSwitchMonitorNode activated. Listening on port %s."), *PortName);
+	UE_LOG(LogHenetSwitchControl, Log, TEXT("HenetSwitchMonitorNode activated. Listening for events..."));
 }
 
 void UHenetSwitchMonitorNode::SetReadyToDestroy()
 {
-	// Clean up the worker thread
-	if (Worker)
-	{
-		Worker->EnsureCompletion();
-		delete Worker;
-		Worker = nullptr;
-	}
+	// --- REMOVED ---
+	// Worker cleanup is now handled by the UHenetSerialConnection object
+	// ---
 
 	// Clear the timer
 	if (WorldContextObject)
@@ -75,33 +82,50 @@ void UHenetSwitchMonitorNode::SetReadyToDestroy()
 
 void UHenetSwitchMonitorNode::StopListening()
 {
-	UE_LOG(LogHenetSwitchControl, Log, TEXT("StopListening called on HenetSwitchMonitorNode. Cleaning up..."));
+	UE_LOG(LogHenetSwitchControl, Log, TEXT("StopListening called on HenetSwitchMonitorNode. Stopping timer..."));
+	// This just stops *this* listener, it does not close the connection.
 	SetReadyToDestroy();
 }
 
 void UHenetSwitchMonitorNode::TimerCallback()
 {
 	// This function runs on the Game Thread
+	// --- NEW: Added Verbose log ---
 	CheckForUpdates();
 }
 
 void UHenetSwitchMonitorNode::CheckForUpdates()
 {
-	if (!Worker) return;
+	// <-- MODIFIED: Check TargetConnection instead of Worker -->
+	if (!IsValid(TargetConnection))
+	{
+		// --- NEW: Added Warning log ---
+		UE_LOG(LogHenetSwitchControl, Warning, TEXT("CheckForUpdates: TargetConnection is NOT valid. Skipping update."));
+		return;
+	}
 
 	FHenetSwitchEvent Event;
 
 	// Dequeue all events that have accumulated
-	while (EventQueue.Dequeue(Event))
+	// <-- MODIFIED: Poll the TargetConnection's queue -->
+	// --- NEW: Added Verbose log ---
+	while (TargetConnection->EventQueue.Dequeue(Event))
 	{
+		// --- NEW: Added Log for dequeued event ---
+		UE_LOG(LogHenetSwitchControl, Verbose, TEXT("CheckForUpdates: Dequeued event (Heartbeat: %s, ConnectionStatus: %s)"),
+			Event.bIsHeartbeat ? TEXT("true") : TEXT("false"),
+			Event.bIsConnectionStatus ? TEXT("true") : TEXT("false"));
+
 		// --- Fire the "OnUpdate" (catch-all) Pin ---
 		// This fires for *every* event, regardless of type.
 		OnUpdate.Broadcast();
 
 		// --- Fire Specific Event Pins ---
+		// (This logic is identical to before)
 
 		if (Event.bIsConnectionStatus)
 		{
+// ... (rest of the file is identical) ...
 			// Check if the status has actually changed
 			if (Event.bIsConnected && !bIsConnected)
 			{

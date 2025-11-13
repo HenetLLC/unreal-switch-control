@@ -1,5 +1,6 @@
 // Copyright Henet LLC 2025
-// Header for the Blueprint Async Action
+// MODIFIED FILE
+// This is now Node 2, the Event Listener.
 
 #pragma once
 
@@ -7,18 +8,17 @@
 #include "Kismet/BlueprintAsyncActionBase.h"
 #include "Containers/Queue.h"
 #include "TimerManager.h"
-#include "HenetSerialPortReader.h" // Includes FHenetSwitchEvent
+// #include "HenetSerialPortReader.h" // No longer need this, HenetSerialConnection.h includes it
+#include "HenetSerialConnection.h" // <-- NEW: Include the connection object
 #include "HenetSwitchMonitorNode.generated.h"
 
-// --- NEW DELEGATE DEFINITIONS ---
 // A single, re-usable delegate type for all events that have no parameters.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FHenetMonitorNoParams);
 
 
 /**
- * Blueprint node to monitor Henet Switch Control protocol from a serial port.
- * This node runs a background thread to listen for serial data and fires
- * specific event pins when data is received.
+ * (NODE 2)
+ * Blueprint node to monitor events from an *existing* Henet Serial Connection.
  */
 UCLASS()
 class HENETSWITCHCONTROL_API UHenetSwitchMonitorNode : public UBlueprintAsyncActionBase
@@ -27,11 +27,12 @@ class HENETSWITCHCONTROL_API UHenetSwitchMonitorNode : public UBlueprintAsyncAct
 
 public:
 	/**
-	 * Starts listening for switch and heartbeat events from the specified serial port.
-	 * @param PortName The name of the serial port (e.g., "COM3").
+	 * Starts listening for switch and heartbeat events from the specified serial connection.
+	 * @param Connection The connection object from "OpenHenetSerialConnection".
 	 */
+	 // <-- MODIFIED: Function signature changed -->
 	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", ExposedAsyncProxy = "AsyncAction"), Category = "Henet Switch Control")
-	static UHenetSwitchMonitorNode* ListenForHenetSwitchEvents(UObject* WorldContextObject, const FString& PortName);
+	static UHenetSwitchMonitorNode* ListenForHenetSwitchEvents(UObject* WorldContextObject, UHenetSerialConnection* Connection);
 
 	// UBlueprintAsyncActionBase interface
 	virtual void Activate() override;
@@ -39,18 +40,19 @@ public:
 	// ~UBlueprintAsyncActionBase interface
 
 	/**
-	 * Stops listening on the serial port and cleans up the background thread.
-	 * This is your "Close Connection" function.
+	 * Stops listening for events *on this node*.
+	 * This does NOT close the serial port. Use "CloseHenetSerialConnection" for that.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Henet Switch Control")
 	void StopListening();
 
 	// --- OUTPUT EXECUTION PINS ---
+	// (These are all unchanged from before)
 
 	/** (Catch-all) Fired for *every* event. */
 	UPROPERTY(BlueprintAssignable)
 	FHenetMonitorNoParams OnUpdate;
-
+// ... (rest of the delegates are identical) ...
 	/** Fired *only* when the serial port successfully connects. */
 	UPROPERTY(BlueprintAssignable)
 	FHenetMonitorNoParams OnConnected;
@@ -103,22 +105,19 @@ private:
 	/** Callback for the timer */
 	UFUNCTION()
 	void TimerCallback();
-
-	/** The serial port to listen on (e.g., "COM3") */
-	FString PortName;
-
+	
 	/** Handle to the world's timer manager */
 	UPROPERTY()
 	TObjectPtr<UObject> WorldContextObject;
 
 	/** Timer handle for polling */
 	FTimerHandle TimerHandle;
+
+	// --- MODIFIED: Replaced Worker and EventQueue with the Connection object ---
 	
-	/** The worker thread object */
-	FHenetSerialPortReader* Worker = nullptr;
-	
-	/** Thread-safe queue for events from the worker thread */
-	TQueue<FHenetSwitchEvent, EQueueMode::Mpsc> EventQueue;
+	/** The connection object we are listening to. */
+	UPROPERTY()
+	TObjectPtr<UHenetSerialConnection> TargetConnection;
 
 	/** Tracks the last known connection state to fire OnConnected/OnDisconnected only when it changes. */
 	bool bIsConnected = false;
