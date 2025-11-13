@@ -183,9 +183,9 @@ uint32 FHenetSerialPortReader::Run()
         {
             if (BytesRead > 0)
             {
-                // <-- Log level changed to Verbose -->
+                // <-- Log level changed to VeryVerbose -->
                 FString HexString = FString::FromHexBlob(ReadBuffer, BytesRead);
-                UE_LOG(LogHenetSwitchControl, Verbose, TEXT("Serial Data Received (%d bytes): %s"), BytesRead, *HexString);
+                UE_LOG(LogHenetSwitchControl, VeryVerbose, TEXT("Serial Data Received (%d bytes): %s"), BytesRead, *HexString);
                 // <-- End of change -->
 
                 // Process every byte read
@@ -248,8 +248,8 @@ void FHenetSerialPortReader::EnsureCompletion()
 
 void FHenetSerialPortReader::ParseByte(uint8 Byte)
 {
-    // <-- Log level changed to Verbose -->
-    UE_LOG(LogHenetSwitchControl, Verbose, TEXT("ParseByte: 0x%02X, State: %d"), Byte, static_cast<int32>(ParserState));
+    // <-- Log level changed to VeryVerbose -->
+    UE_LOG(LogHenetSwitchControl, VeryVerbose, TEXT("ParseByte: 0x%02X, State: %d"), Byte, static_cast<int32>(ParserState));
 
     // --- REFACTORED STATE MACHINE ---
     // ENQ (0x05) is treated as a "reset" signal at any point.

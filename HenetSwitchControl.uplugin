@@ -1,9 +1,9 @@
 {
 	"FileVersion": 3,
 	"Version": 1,
-	"VersionName": "0.7.2",
+	"VersionName": "0.8",
 	"FriendlyName": "Henet Switch Control",
-	"Description": "Monitors a serial port for switch presses based on the Henet switch protocol.",
+	"Description": "Monitors a serial port for external device input based on the Henet switch protocol.",
 	"Category": "Henet LLC",
 	"CreatedBy": "Henet LLC",
 	"CreatedByURL": "https://github.com/HenetLLC/unreal-switch-control",
