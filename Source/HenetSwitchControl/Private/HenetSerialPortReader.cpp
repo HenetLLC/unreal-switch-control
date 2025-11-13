@@ -87,6 +87,13 @@ bool FHenetSerialPortReader::Init()
     dcbSerialParams.Parity = NOPARITY;
     dcbSerialParams.StopBits = ONESTOPBIT;
 
+    // --- NEW SETTINGS TO FIX "NO DATA" ISSUE ---
+    // Tell the device we are ready to receive data (DTR)
+    // and ready to send (RTS). Many Arduinos wait for DTR.
+    dcbSerialParams.fDtrControl = DTR_CONTROL_ENABLE;
+    dcbSerialParams.fRtsControl = RTS_CONTROL_ENABLE;
+    // --- End of new settings ---
+
     if (!SetCommState(hSerial, &dcbSerialParams))
     {
         UE_LOG(LogHenetSwitchControl, Error, TEXT("Failed to set serial port state."));
@@ -95,6 +102,20 @@ bool FHenetSerialPortReader::Init()
         EventQueue.Enqueue(FHenetSwitchEvent::MakeConnectionStatus(false)); // <-- NEW
         return false;
     }
+    
+    // --- NEW: Verify the settings were accepted ---
+    DCB dcbVerify = {0};
+    dcbVerify.DCBlength = sizeof(dcbVerify);
+    if (GetCommState(hSerial, &dcbVerify))
+    {
+        UE_LOG(LogHenetSwitchControl, Log, TEXT("Verified DCB settings: BaudRate=%d, DTR=%d"), dcbVerify.BaudRate, dcbVerify.fDtrControl);
+    }
+    else
+    {
+        UE_LOG(LogHenetSwitchControl, Warning, TEXT("Failed to verify comm state after setting."));
+    }
+    // --- End of verification ---
+
 
     // Set timeouts
     // We'll use a short read timeout to make the ReadFile call non-blocking
